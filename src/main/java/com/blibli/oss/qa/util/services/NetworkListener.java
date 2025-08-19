@@ -5,20 +5,19 @@ import com.blibli.oss.qa.util.model.HarModel;
 import com.blibli.oss.qa.util.model.RequestResponsePair;
 import com.blibli.oss.qa.util.model.RequestResponseStorage;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import de.sstoehr.harreader.model.Har;
-import de.sstoehr.harreader.model.HarCreatorBrowser;
-import de.sstoehr.harreader.model.HarEntry;
-import de.sstoehr.harreader.model.HarLog;
-import de.sstoehr.harreader.model.HarPage;
-import de.sstoehr.harreader.model.HarPageTiming;
+import de.sstoehr.harreader.model.*;
 import lombok.extern.slf4j.Slf4j;
 import org.openqa.selenium.MutableCapabilities;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.chromium.ChromiumDriver;
 import org.openqa.selenium.devtools.DevTools;
+import org.openqa.selenium.devtools.DevToolsException;
 import org.openqa.selenium.devtools.HasDevTools;
-import org.openqa.selenium.devtools.v137.network.Network;
-import org.openqa.selenium.devtools.v137.network.model.*;
+import org.openqa.selenium.devtools.v139.network.Network;
+import org.openqa.selenium.devtools.v139.network.model.LoadingFailed;
+import org.openqa.selenium.devtools.v139.network.model.Request;
+import org.openqa.selenium.devtools.v139.network.model.Response;
+import org.openqa.selenium.devtools.v139.network.model.ResponseReceivedExtraInfo;
 import org.openqa.selenium.remote.Augmenter;
 import org.openqa.selenium.remote.RemoteWebDriver;
 
@@ -28,12 +27,8 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.lang.reflect.Field;
 import java.nio.file.Files;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.nio.file.Paths;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
@@ -62,7 +57,7 @@ public class NetworkListener {
         this.driver = driver;
         this.harFile = harFileName;
         try {
-            Files.delete(java.nio.file.Paths.get(harFile));
+            Files.delete(Paths.get(harFile));
         } catch (IOException e) {
             // Since it's expected to be failed , log level info is good
             log.info("Not able to find prevous har file " + e.getMessage());
@@ -70,12 +65,13 @@ public class NetworkListener {
         devTools = ((ChromiumDriver) driver).getDevTools();
         createHarBrowser();
     }
-    public NetworkListener(WebDriver driver , DevTools devTools , String harFileName){
+
+    public NetworkListener(WebDriver driver, DevTools devTools, String harFileName) {
         this.devTools = devTools;
         this.driver = driver;
         this.harFile = harFileName;
         try {
-            Files.delete(java.nio.file.Paths.get(harFile));
+            Files.delete(Paths.get(harFile));
         } catch (IOException e) {
             // Since it's expected to be failed , log level info is good
             log.info("Not able to find prevous har file " + e.getMessage());
@@ -96,7 +92,7 @@ public class NetworkListener {
         this.harFile = harFileName;
         this.baseRemoteUrl = baseRemoteUrl;
         try {
-            Files.delete(java.nio.file.Paths.get(harFile));
+            Files.delete(Paths.get(harFile));
         } catch (IOException e) {
             // Since it's expected to be failed , log level info is good
             log.info("Not able to find prevous har file " + e.getMessage());
@@ -144,7 +140,7 @@ public class NetworkListener {
     public void start(String windowHandle) {
         initializeCdp();
         devTools.createSession(windowHandle);
-        devTools.send(Network.enable(Optional.empty(), Optional.empty(), Optional.empty()));
+        devTools.send(Network.enable(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()));
         devTools.clearListeners();
 
         requestResponseStorage = windowHandleStorageMap.get(windowHandle);
@@ -160,9 +156,14 @@ public class NetworkListener {
 
             devTools.addListener(Network.responseReceived(), responseConsumer -> {
                 Response response = responseConsumer.getResponse();
-                String responseBody =
-                    devTools.send(Network.getResponseBody(responseConsumer.getRequestId()))
-                        .getBody();
+                String responseBody;
+                try {
+                    responseBody =
+                            devTools.send(Network.getResponseBody(responseConsumer.getRequestId()))
+                                    .getBody();
+                } catch (DevToolsException e) {
+                    responseBody = "";
+                }
                 requestResponseStorage.addResponse(response, responseBody);
             });
 
@@ -176,8 +177,8 @@ public class NetworkListener {
         }
     }
 
-    private void initializeCdp(){
-        if(this.devTools != null ){
+    private void initializeCdp() {
+        if (this.devTools != null) {
             devTools.createSessionIfThereIsNotOne();
             return;
         }
@@ -189,7 +190,7 @@ public class NetworkListener {
             }
             devTools.createSessionIfThereIsNotOne();
         } catch (Exception e) {
-            log.error("CDP Can't be initialized " , e);
+            log.error("CDP Can't be initialized ", e);
         }
     }
 
@@ -263,7 +264,7 @@ public class NetworkListener {
             harPages.add(createHarPage(windowHandle));
             reqResStorage.getRequestResponsePairs().forEach(pair -> {
                 if (pair.getRequest().getUrl().contains(filter)) {
-                    harEntries.addAll(saveHarEntry(pair,windowHandle));
+                    harEntries.addAll(saveHarEntry(pair, windowHandle));
                 }
             });
         });
@@ -275,7 +276,7 @@ public class NetworkListener {
         createFile(har);
     }
 
-    private List<HarEntry> saveHarEntry(RequestResponsePair pair, String windowHandle){
+    private List<HarEntry> saveHarEntry(RequestResponsePair pair, String windowHandle) {
         List<HarEntry> result = new ArrayList<>();
         List<Long> time = new ArrayList<>();
         if (pair.getResponse() != null) {
@@ -308,7 +309,7 @@ public class NetworkListener {
         try {
             String json = new String(om.writeValueAsString(har).getBytes(), charset);
             // write json to file
-            Files.write(java.nio.file.Paths.get(harFile), json.getBytes());
+            Files.write(Paths.get(harFile), json.getBytes());
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -316,9 +317,10 @@ public class NetworkListener {
 
     /**
      * Setup Charset on the file generation
+     *
      * @param charset default will be UTF-8 , you can get from here https://docs.oracle.com/javase/8/docs/api/java/nio/charset/Charset.html
      */
-    public void setCharset(String charset){
+    public void setCharset(String charset) {
         this.charset = charset;
     }
 
@@ -348,7 +350,7 @@ public class NetworkListener {
                                    LoadingFailed loadingFailed,
                                    ResponseReceivedExtraInfo responseReceivedExtraInfo) {
         HarEntryConverter harEntry =
-                new HarEntryConverter(request, response,loadingFailed, responseReceivedExtraInfo, time, pagref, responseBody);
+                new HarEntryConverter(request, response, loadingFailed, responseReceivedExtraInfo, time, pagref, responseBody);
         harEntry.setup();
         return harEntry.getHarEntry();
     }
@@ -356,8 +358,8 @@ public class NetworkListener {
 
     /**
      * @param networkListener - NetworkListener
-     * @param driver browser driver
-     * @param tabIndex num tab of your destination, 0 is first tab index
+     * @param driver          browser driver
+     * @param tabIndex        num tab of your destination, 0 is first tab index
      */
     public static void switchTab(NetworkListener networkListener, WebDriver driver, Integer tabIndex) {
         driver.switchTo().window(new ArrayList<>(driver.getWindowHandles()).get(tabIndex));

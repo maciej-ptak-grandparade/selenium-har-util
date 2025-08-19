@@ -8,7 +8,7 @@ import de.sstoehr.harreader.model.HarRequest;
 import de.sstoehr.harreader.model.HarResponse;
 import de.sstoehr.harreader.model.HarTiming;
 import de.sstoehr.harreader.model.HttpMethod;
-import org.openqa.selenium.devtools.v137.network.model.*;
+import org.openqa.selenium.devtools.v139.network.model.*;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -188,7 +188,7 @@ public class HarEntryConverter {
 
     private HarPostData setHarPostData() {
         HarPostData harPostData = new HarPostData();
-        harPostData.setText(request.getPostData().get());
+        harPostData.setText(request.getPostData().orElse(""));
         return harPostData;
     }
 
