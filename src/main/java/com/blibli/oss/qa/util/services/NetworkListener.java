@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import de.sstoehr.harreader.model.*;
 import lombok.extern.slf4j.Slf4j;
 import org.openqa.selenium.MutableCapabilities;
+import org.openqa.selenium.TimeoutException;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.chromium.ChromiumDriver;
 import org.openqa.selenium.devtools.DevTools;
@@ -161,7 +162,7 @@ public class NetworkListener {
                     responseBody =
                             devTools.send(Network.getResponseBody(responseConsumer.getRequestId()))
                                     .getBody();
-                } catch (DevToolsException e) {
+                } catch (DevToolsException | TimeoutException e) {
                     responseBody = "";
                 }
                 requestResponseStorage.addResponse(response, responseBody);
